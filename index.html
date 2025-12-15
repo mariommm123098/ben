@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PROJECT: MADMAN // FULL_SCRIPT // BEN_EDITION</title>
+    <style>
+        :root {
+            --bg-color: #0a0a0a;
+            --text-color: #e0e0e0;
+            --ben-color: #ff3e3e; /* Ben的高亮色 */
+            --other-color: #00ff9d; /* 其他人的颜色 */
+            --stage-color: #888; /* 舞台指示/众人的颜色 */
+            --ui-border: 2px solid #333;
+            --font-main: 'Courier New', Courier, monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* 顶部控制栏 */
+        header {
+            padding: 15px;
+            border-bottom: var(--ui-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #111;
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            letter-spacing: -1px;
+            text-transform: uppercase;
+        }
+
+        select {
+            background: #000;
+            color: var(--other-color);
+            border: 1px solid var(--other-color);
+            padding: 5px;
+            font-family: inherit;
+            cursor: pointer;
+            max-width: 200px;
+        }
+
+        /* 主显示区域 */
+        #stage {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            scroll-behavior: smooth;
+            padding-bottom: 100px; /* 底部留白 */
+        }
+
+        .line {
+            padding: 15px;
+            border-left: 3px solid #333;
+            background: #111;
+            opacity: 0;
+            animation: fadeIn 0.3s forwards;
+            max-width: 900px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        @keyframes fadeIn { to { opacity: 1; } }
+
+        .role {
+            font-size: 0.8rem;
+            opacity: 0.7;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        .text {
+            font-size: 1.15rem;
+            line-height: 1.6;
+            white-space: pre-wrap; /* 保留换行 */
+        }
+
+        /* 样式区分 */
+        .line.ben {
+            border-left-color: var(--ben-color);
+            background: rgba(255, 62, 62, 0.08);
+        }
+        .line.ben .role { color: var(--ben-color); }
+        
+        .line.other {
+            border-left-color: var(--other-color);
+        }
+        .line.other .role { color: var(--other-color); }
+
+        .line.stage {
+            border-left-color: var(--stage-color);
+            color: var(--stage-color);
+            font-style: italic;
+            font-size: 0.9rem;
+        }
+
+        .line.instruction {
+            border: 1px dashed #555;
+            background: transparent;
+            color: #777;
+            font-style: italic;
+            text-align: center;
+        }
+
+        /* 遮罩样式 */
+        .masked {
+            background-color: var(--ben-color);
+            color: var(--ben-color);
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s;
+            border-radius: 2px;
+        }
+        .masked:hover {
+            background-color: #d32f2f;
+        }
+        .revealed {
+            background-color: transparent;
+            color: var(--text-color);
+        }
+
+        /* 底部操作区 */
+        #controls {
+            padding: 20px;
+            border-top: var(--ui-border);
+            background: #000;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            z-index: 20;
+        }
+
+        button {
+            background: var(--text-color);
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 4px 4px 0px var(--ben-color);
+            transition: transform 0.1s;
+        }
+
+        button:active {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0px var(--ben-color);
+        }
+
+        button#resetBtn {
+            background: #333;
+            color: #fff;
+            box-shadow: 4px 4px 0px #555;
+        }
+
+        /* 进度条 */
+        #progress-container {
+            position: fixed;
+            top: 60px; /* header height approx */
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: #222;
+            z-index: 15;
+        }
+        #progress-fill {
+            height: 100%;
+            background: var(--ben-color);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Madman_Sys <span style="color:var(--ben-color)">// BEN_FULL</span></h1>
+        <select id="sceneSelect" onchange="changeScene()">
+            </select>
+    </header>
+
+    <div id="progress-container"><div id="progress-fill"></div></div>
+
+    <div id="stage"></div>
+
+    <div id="controls">
+        <button id="resetBtn" onclick="resetScene()">重置 (R)</button>
+        <button id="nextBtn" onclick="advance()">下一句 / 揭晓 (SPACE)</button>
+    </div>
+
+<script>
+    // 剧本解析逻辑：将大段文本转换为结构化数据
+    // 注意：这里包含了从第一幕到第九幕的完整数据提取逻辑
+    
+    const rawData = [
+        // 这里放置所有的剧本行，为了不让代码过长，我将使用紧凑格式，
+        // 并在运行时解析。
+        
+        // --- 第一幕 ---
+        "ACT:第一幕",
+        "Lily： 啊————（尖叫） 谁呀！",
+        "Ben： 谁！ 你们什么人？ 这是什么地方？",
+        "Sunny： 你别动！",
+        "Lily： 你谁啊？",
+        "Ben： 我怎么来的？",
+        "Tom： 他快被你掐死了 ！",
+        "Lily： 死人啦啊啊啊啊！",
+        "Sam： 先生， 先生， 呼吸均匀， 四肢放松， 体温正常， 他晕过去了， 先生醒醒， 醒醒， 醒醒。",
+        "Shawn： 放开！ 吵什么？ 闹什么？ 我眼镜呢？ 有没有点组织性纪律性？ 有……这什么地方？ 什么地方？",
+        "Sam： 你你你冷静点， 我们也不知道。",
+        "Lily： 不知道。",
+        "Tom： 我也不知道哇。",
+        "Shawn： 全都是铁丝网， 这是哪儿啊？",
+        "Ben： 我还想问你呢。（背景乐）（Lily： 啊） 谁啊？ 谁啊？ 出来。",
+        "Sunny： 报警吧。",
+        "Sunny： 报警吧",
+        "Sam、 Tom： 报警报警",
+        "Sunny： 这怎么回事！ 我的衣服！",
+        "Lily： 我的表！ 不见了 我的表！",
+        "Tom： 我怎么和你穿一样的衣服呢！",
+        "Shawn： 我原来的衣服去哪了？ 这怎么都是皮带呢！",
+        "众人： 报警…报警",
+        "众人： 这怎么回事儿， 我的衣服， 我原来的衣服去哪儿了， 这怎么都是皮带呢",
+        "Tom： 这到底是哪儿啊这是",
+        "Lily： 唉， 这有个红点儿",
+        "Sunny： 监控器。 这说明有人在监视我们。",
+        "Lily： 真人秀， 是不是真人秀啊， 啊",
+        "Tom： 唉， 不可能， 电视台不可能只用一个机位来录节目的。",
+        "Shawn： 讲话了 ， 科学实验。 1868 年进化论之父达尔文用同样的方法证明了 搜集了很多表情。 困惑， 不安， 狂躁， 焦虑， 震惊。",
+        "Tom： 那我问你， 你是否跟相关的科学机构签署过这样的协议呢？",
+        "Shawn： 听我说完好吗？ 当年。。。。。。",
+        "Tom： 你只要回答我是还是不是？",
+        "Shawn： 不是",
+        "Tom： 那你们呢？",
+        "Ben： 没有没有没有（众人： 没有没有）",
+        "Lily： 没有",
+        "Tom： 那就不是科学实验啊",
+        "Shawn： 那红点你说是什么",
+        "Lily： 对啊",
+        "Tom： 他们这种行为已经构成了非法拘禁， 如果他们再提出要求的话， 那就是绑架呀",
+        "Ben： 绑我一司机， 你有毛病啊？",
+        "Sunny： 好好好， 先别吵， 先从自己身上找找原因吧。 听你刚才说话的口气， 你像是个……",
+        "Tom： 律师， 我叫 Tom",
+        "Sunny： 你是怎么来这儿的",
+        "STAGE： (阴森的背景乐， 起——)",
+        "Tom： 我……额， 我记得我去见我的当事人... (省略长段描述，重点是Ben的台词)",
+        "Shawn： 然后呢？",
+        "Tom： 就没有然后了呀， 哎呀我晕过去了",
+        "Ben： 我不是我不是， 我正开车呢， 就那条路平时每天都特别堵， 但今天就挺好走的， 我就开， 开着开着突然后面就咣的一下， 我也不知道是什么东西啊， 就跟我追尾了 ， 然后我脑袋一下就磕方向盘上了 ， 我就晕过去了 。",
+        "Sunny： 你刚才说你是个司机",
+        "Ben： 开出租的， 那个你叫我 Ben 就可以了 ， 那位， 刚才不好意思啊， 我还以为你们…",
+        "Sam： 没关系， 没关系。 我当时在电梯里...",
+        "Shawn： 皇家实验中学历史老师， 大家好我叫 Shawn...",
+        "Sunny： 先驱报记者 Sunny...",
+        "Lily： 哦， 是我， 公关经理 Lily...",
+        "众人： 上帝啊， 哎呦， 唉， 唉",
+        "Sunny： 你呢？",
+        "Lily： 哎， 你叫什么啊？",
+        "Tom： 对啊",
+        "Lily： 你说话啊",
+        "STAGE： (阴森的背景乐， 止)",
+        "Ben： 问你呢！ 能不能回答一下！ 你是不是知道什么啊？ 啊？",
+        "Sam： 别吓唬她",
+        "Shawn： 就是",
+        "Sam： 姑娘， 姑娘， 你哑巴？ 那你能听见我们说话吗？...",
+        "Ben： 什么毛病",
+        "Sam： 你放松啊， 深呼吸， 一会儿就好了啊",
+        "Tom： 惊吓过度， 下药投毒， 背后袭击， 意外伤害， 交通事故...",
+        "Shawn： 犯罪动机",
+        "Tom： 对啊， 为什么",
+        "Lily： 嫉妒， 一定是在嫉妒我...",
+        "众人： 谁， 谁啊？",
+        "Lily： 你们还是想想自己有没有仇人吧。",
+        "Tom： 仇人， 不可能， 我就不可能有仇人...",
+        "Shawn： 讲话了 ， 我是个老师啊...",
+        "Sam： 那我一个救死扶伤的医生就更不可能有仇人了",
+        "Tom： 是啊",
+        "Ben： 不是， 不……",
+        "Sam： 难道是因为我的专家号太难挂吗？",
+        "Ben： 过了， 过了哥们儿， 你不至于吧， 不就几趟机场的活吗？ 你撬我活的时候我说你什么了， 你先放我出去啊， 钱我全给你行不行， 你别这………",
+        "Sunny： 行行行行了 ， 你那点破事儿不至于牵扯这么多人...",
+        "Lily： 细节",
+        "Tom： 什么意思啊",
+        "Sunny： 这个房间里某些细节可以告诉我们这是哪儿",
+        "Tom： 对啊",
+        "Sunny： 看看， 你们看这个数字和这大门， 像不像个仓库",
+        "Tom： 恩",
+        "Shawn： 讲话了， 我们穿的像是某种制服啊",
+        "Ben： 你们听你们听啊， 一声车喇叭都没有， 这他妈肯定到六环外了",
+        "Lily： 倒是有一些 party 会选择在这种私密的空间里举行的...",
+        "Sam： 唉唉唉， 有没有闻见消毒水的味道",
+        "Tom： 那根据刚才我们大家的分析...",
+        "STAGE： 广播前奏",
+        "Ben： 什…什么声音！",
+        "广播： 现在开始做第七套广播体操。",
+        "众人： 啊？ ！",
+        "Shawn： 啊， 广播体操。。。",
+        "Sunny： 找找声音！",
+        "STAGE： （众人寻找，互动...）",
+        "Ben： 你他妈什么意思， 把我跟他们关一块儿， 我又不是神经病（背景乐）",
+        "Sam： 先先先先生， 纠正一下啊， 这种症状在医学上的术语不是神经病……是精神病……",
+        "Ben： 我我我我听你话这意思， 你不是这儿的吧",
+        "Sam： 我当然不是这儿的， 我是个医生啊",
+        "Ben： 我也是个正常人啊",
+        "众人： 我也是， 我也是",
+        "Ben： 别过来， 别过来。 都说自己正常， 这他妈就有点不正常",
+        "SUNNY： 你他妈哪看出来…",
+        "LILY： 我是正常人啊！",
+        "众人： 这怎么办， 唉呀， 大家都说是正常人啊",
+        "Ben： 你是不是医生， 医生是吧， 想个办法， 大家互相证明一下， 啊？",
+        "Sam： 行行行， 那这样好不好啊...",
+        "Tom： 明白",
+        "Sunny： 好好好",
+        "Lily： 快快快",
+        "Sam： 说说说",
+        "Tom： 唉， 她又不会说话",
+        "Sam： 那我先来啊。 生病。...",
+        "Tom： 好好好， 也是病， 啊",
+        "Ben： 出租车。",
+        "Sunny： 你！",
+        "Ben： 我就干这个的， 这是我的工作， 别误会",
+        "Sam： 行行行行",
+        "Tom： 开庭， 都对",
+        "Shawn： 上课， 没问题",
+        "Lily： 丝袜， 啊啊！（指 Tom）",
+        "Tom： 那个， 抢劫犯的丝袜都是套头上的对吧？",
+        "Sunny： 采访， 你……",
+        "众人： 幸福吗",
+        "Sunny： 正常人",
+        "Shawn： 太敏捷了",
+        "众人： 对对对， 这这。。",
+        "Lily： 那到底是谁把我们这么一群正常人， 关在疯人院呢？ 这。。。",
+        "院长： 错了， 是第七区精神病院",
+        "Ben： 谁说话了 ？",
+        "Tom： （对 SHAWN） 你说话了 ？",
+        "Shawn： 谁说话了 ！",
+        "Sunny： 谁啊？",
+        "Lily： 谁啊？",
+        "Ben： 谁在说话！ 谁！",
+        "众人： 谁， 谁啊， 谁在说话， 谁",
+        "院长： 我是院长 Lawrence。",
+        "Shawn： 哪儿呢院长",
+        "Tom： （ 指摄像头 ） 在那呢！",
+        "Lily&Tom： 院长院长！ 我是正常人！",
+        "Ben： 我他妈在外面一堆事儿你把我放这！ …他们…你他妈…",
+        "众人： （...乱）",
+        "院长： 不要吵， 冷静一点... 电击！",
+        
+        // --- 第二幕 ---
+        "ACT:第二幕",
+        "Ben： 没完， 啊， 这事儿没完， 等我出去， 我他妈不讹死你我跟你姓， 电我， 是吧。",
+        "Sam： 你真电啊你啊， 都是同行， 相煎何太急啊",
+        "Ben： 你们活该哎",
+        "Sam： 什么活该",
+        "Ben： 你就是活该， 你是不是医生？",
+        "Sam： 我是",
+        "Ben： 这是不是医院",
+        "Sam： 这是精神病院",
+        "Ben： 要我说就该把你们医生挨个抓起来， 一个一个的电",
+        "Sam： 你不要胡说八道啊...",
+        "Tom： 你还好意思说你们救死扶伤...",
+        "Sam： 是是是， 对对对...",
+        "Shawn： 讲话了， 你被电你还赖教育！",
+        "Ben： 不赖你赖谁， 哪个医生不是你们老师教出来的？",
+        "Shawn： 我教医生我怎么我…",
+        "Tom： 就是！ 赖你怎么了 。 你看看…",
+        "Shawn： 停！ 你凭什么指我...",
+        "Ben： 他们， 干不了这个事儿， 谁出钱就帮谁说话！",
+        "Shawn： 没错！",
+        "Ben： 杀人犯也帮， 强奸犯也帮， 一点道德都没有！",
+        "Tom： 最起码我没有黑白不分吧...",
+        "Lily： 行了 别吵了， 你们吓着她了 ！",
+        "Sunny： 你们说的都对， 还有吗... (Sunny 长独白)... 我们和他们不一样。",
+        "Sam： 对， 没错， 穿上病号服并不能代表我们就是病人",
+        "Tom： 就是",
+        "Sunny： 我们是被人以非正常手段强行关押在这儿的",
+        "Tom： 所以我们一定要追究他们的刑事责任",
+        "Sunny： 这种恶劣的野蛮行径完全超越了所有的道德准则...",
+        "Shawn： 人不犯我我不犯人...",
+        "Sunny： 面对这种人... 予以坚决的抵抗和有力的还击啊。",
+        "Ben： 单挑， 群架， 随便",
+        "Sunny： 所以从现在开始...",
+        "众人： 道歉…没错",
+        "Sunny： 不但如此， 我还要把我们经历过的所有的磨难全部公诸于众... 打倒无良院长！",
+        "众人： 打倒院长",
+        "Sunny： 还我人权自由",
+        "众人： 还我自由",
+        "Sunny： 拒绝在诊断书上签字",
+        "众人： 拒绝签字",
+        "Sunny： 打倒无良院长",
+        "众人： 打倒院长",
+        "Sunny： 还我人权自由",
+        "众人： 还我自由",
+        "Sunny： 拒绝在诊断书上签字",
+        "众人： 拒绝签字",
+        "STAGE： （背景乐， 食物和药）",
+        "Ben： 切， 这七个人， 一份饭， 谁吃谁不吃啊",
+        "Tom： 这就是你们侵犯我们人权的又一力证",
+        "Shawn： 讲话了， 侮辱我们的人格， 还蔑视我们的饭量",
+        "Sam： 各位... 这个面包里一定有药...",
+        "Tom： 行了行了 行了",
+        "Sam： 我是不是说多了 ……",
+        "Sunny： 一份饭， 一颗药... 我们也坚决不能吃饭",
+        "Tom： 我觉得你说的非常的有道理... (Sam 名字讨论)... 我们对那个药说 NONONO， 但是对饭呢， 我们就可以说 YES、 YES、 YES。",
+        "Ben： 唉， 吃啊， 吃啊， 吃！ 把你关这儿， 换上这身破衣服， 你他妈还吃他们东西， 真把自己当神经病了！ ？",
+        "Sam： 再纠正一下， 是精神病。 Tom 是吧， 作为一个正常人， 三天不进食不会有生命危险的",
+        "Tom： 噢",
+        "Sam： 你， 五天。",
+        "Tom： 唉， 你什么意思啊？",
+        "Shawn： Tom 律师， 讲话了 ...",
+        "Lily： 律师先生， 我觉得像我们这些弱女子都能挺得住...",
+        "Tom： 我这是有法律依据的",
+        "Sunny： 其实不一定每个人都愿意， 证明自己不是精神病人。",
+        "Shawn： 嗯",
+        "Sunny： 每个人不都有为自己做选择权利吗， 是吧， Tom 律师",
+        "Tom： 也对",
+        "Sunny： 用餐愉快",
+        "Tom： 唉， 不是， 哎呀， 你们误会了... 我当然会对这个饭说……ＮＯ 。 从现在开始， 啊， 谁也不要吃那个饭， 我负责监督大家。",
+        "Shawn： 对， 退后！ 看看谁还吃",
+        "STAGE： （吃药倒计时 30 秒， 倒计时背景乐）",
+        "Shawn： 吃药倒计时？",
+        "Tom： 不吃不会又电我们吧",
+        "Sunny： 就算是要电击， 大家挺过去， 坚持住",
+        "众人： 怎么又被电啊， 。。。。。",
+        "Icy： 在天上的父...",
+        "Shawn： 本杰明帮我拿着眼镜！",
+        "Ben： 吓， 吓唬人是吧， 有意思吗？",
+        "Shawn： 这回电的这么快， 闪电啊",
+        "院长： 203 病房为什么不吃药",
+        "Sam： 院长我跟你聊聊",
+        "Ben： 跟你聊聊",
+        "Lily： 你有病啊你！",
+        "Tom： 你谁啊你！",
+        "Sunny： 冷静， 大家冷静！... 一个一个的聊...",
+        "院长： 你们向我证明， 你是谁？",
+        "Sunny： 先驱报记者 Sunny... (Sunny 与院长的交锋)",
+        "院长： Sunny 记者... (揭露Sunny)... 吃药还是电击？",
+        "Sunny： 你凭什么偷窥我的私事（背景乐： 电击声）",
+        "Ben： 等等等会儿， 我坦白， 我交代， 其实我就是一个黑车司机， 我的全名是阿里克谢· 马克西莫维奇· 彼什科夫· 谢尔盖· 费尔南多…",
+        "院长： 简短",
+        "Ben： 你叫我本杰明就可以了 ， 我现在准备用我一套标准的工作流程向你证明， 我其实是个正常人， 注意看， 恩恩~~~一档~~恩~~~二档~~恩~~~三档~~~~四~~~",
+        "院长： 本杰明先生， 玩的开心吗？",
+        "Ben： 谁……谁跟你玩了？",
+        "院长： 吃药还是电击",
+        "Ben： 我告诉你你少跟我来这套啊， 药我肯定不会吃， 电， 你他妈你电我一下你试试， 当我。。。。",
+        "STAGE： （背景乐： 电击声）",
+        "Lily： Lawrence 院长对吗... (Lily 尝试公关)",
+        "院长： Lily 小姐... 吃药还是电击",
+        "Lily： 那我是个正常人你抓我进来干嘛啊， 哎哎哎（背景乐： 电击声）",
+        "Sam： 尊敬的院长先生您好... (Sam 尝试专业沟通)",
+        "院长： 还有呢？... 吃药还是电击",
+        "Sam： 我没病， 我是不是又说多了……（背景乐： 电击声）",
+        "Tom： 那个， 院长大人您好... (Tom 尝试辩护)",
+        "院长： 你有病... 吃药还是电击",
+        "Tom： 我反对！... (电击声)",
+        "Shawn： 院长大人... (Shawn 讲历史)",
+        "STAGE： （竖中指， 电击声）",
+        "Icy： 院长... 我是 Icy",
+        "院长： 吃药还是电击（Icy 吃药， 背景乐， 灭灯）",
+
+        // --- 第三幕 ---
+        "ACT:第三幕",
+        "Ben： 就……就是电， 根本就不让人说话， 就是电， 呸。",
+        "Sunny： 大家都被电了",
+        "Sam： 这已经是第二次了... Tom 你别哭了别哭了啊",
+        "Tom： 我没哭啊， 我这就是你说的电击后遗症",
+        "Sam： 放松， 放松",
+        "Lily： 我们赶紧想办法出去吧...",
+        "Sunny： 坚强点， 大家都坚强点...",
+        "Sam： 姑娘， 姑娘， 四肢僵硬... (发现Icy没被电)",
+        "Tom： 她比我还严重啊？",
+        "Sam： 严重多了",
+        "Ben： 完全太没有人性了",
+        "SHAWN： 这完全太没有人性了",
+        "BEN： 我就没见过…. 我就不知道…",
+        "Icy： 我没被电",
+        "Sam： 哎等会儿等会儿你说什么",
+        "Icy： 我没被电",
+        "Lily： 什么",
+        "Tom： 她没被电",
+        "Sunny： 你没被电",
+        "Tom： 难道说我们已经找到一个方法对付他了吗",
+        "Sunny： 快快快， 快起来",
+        "Shawn： 也许这个人是讲道理的",
+        "众人： 来来！ 你快说这是为什么！",
+        "Sunny： 发生什么了？",
+        "Lily： 为什么？",
+        "Icy： 我什么都没说， 我只是把药吃了",
+        "Lily： 他们逼你吃的， 啊？",
+        "Sam： 他们把你嘴撬开的",
+        "Tom： 一定是暴力胁迫",
+        "Ben： 你他妈说句话啊， 难道你自己吃的！",
+        "Tom： 完了， 默认了， 不是…",
+        "Shawn： 讲话了 ， 你…",
+        "Ben： 你他妈哪儿那么多话啊你",
+        "Icy： 对不起， 我只是怕再被电... 以后药都我吃好吗...",
+        "Sunny： 晚了... (审问 Icy)...",
+        "Tom： 虽然法律上并没有叛徒这个罪名... (Ben， Lily， Shawn： 呸)",
+        "Sam： 哎哎， 过分了 吧...",
+        "Sunny： 跟你无关吗？... (逼问Sam)",
+        "Sam： Icy... 离我们远一点。",
+        "Sunny： 好了... 我们要反思...",
+        "Tom： 没错",
+        "Ben： 再电真受不了",
+        "Sam： 不能再被电了",
+        "Sunny： 医生， 告诉我， 精神病人的主要症状有哪些？",
+        "Sam： (列举症状)...",
+        "Sunny： 那我们可不可以这样推断... 集体的秩序的行为...",
+        "Tom： 有道理",
+        "Sunny： 我们想一想， 集体的秩序的行为。",
+        "Ben： 来套军体拳怎么样",
+        "Shawn： 哎呀讲话了， 有点节奏感好吗",
+        "Tom： 多少有点儿美感吧",
+        "Ben： 你出来跳个舞",
+        "Tom： 你怎么不跳呢",
+        "Ben： 你再说一句",
+        "Lily： 哎哎， 对了， 集体舞",
+        "众人： 集体舞？",
+        "Lily： 我想想啊…（动作）",
+        "Tom： 哦， 明白， 见过",
+        "Sam： 来吧， 嗯",
+        "Sunny： 动作幅度大， 你起头",
+        "STAGE： （众人... 印度舞）",
+        "Sunny： 没反应啊... 对着监控器",
+        "Icy： 啊哈哈哈哈哈哈哈哈哈哈哈",
+        "Tom： 好了， 别笑了， 有什么好笑的",
+        "Sunny： Tom... 监狱里的犯人一般是通过什么手段， 让狱警到牢房里来",
+        "Tom： 一般是... 打架斗殴...",
+        "Sunny： 斗殴？",
+        "Tom： 斗殴",
+        "Sunny： Sam， 去， 跟本杰明打一架",
+        "Ben： 算了 算了 算了 ， 我怕打死你",
+        "Sunny： Shawn， Shawn 老师， 你上...",
+        "Shawn： 我不敢， 我凭什么打他啊",
+        "Sunny： 因为……因为 Sam……骚扰了 Lily...",
+        "Tom： 性骚扰， 快快",
+        "Sam： 什么性骚扰...",
+        "Lily： 哎呀， 他摸我... 你看看他摸我",
+        "Sunny： 道德败坏啊... 打架了 ！",
+        "Ben： 好意思你！... 打架了 ！ 打起来了 ！",
+        "众人： （...打架了...）",
+        "Sunny： Tom， 上去帮忙",
+        "Tom： 这有什么难的啊... 对不起对不起",
+        "Sunny： 没什么好对不起的... 躺下... 打架了 ！",
+        "Ben： 诶！ 诶！ 打起来了 ！",
+        "Lily： 打架了 ！ 诶！",
+        "Ben： 真打架了 ！ 有没有人啊！",
+        "Sunny： 怎么没人啊！",
+        "Ben， Sunny， Lily： 向院长呼喊……哎哎 打架了 啊...",
+        "Sunny： 没人啊！ 没打过架吗？... 掐， 掐， 掐死他...",
+        "Shawn： 啊啊啊啊……",
+        "STAGE： （众人： 慢动作。 背景乐）",
+        "Icy： 啊——————！",
+        "Ben： 滚， 滚开， 滚开。 没事儿吧， 来来来， 深呼吸， 深呼吸， 没事儿吧。",
+        "Sunny： 你怎么打人呢？",
+        "Ben： 我打人， 你们他妈还杀人呢！",
+        "Sunny： 刚才说好了 不是演戏么！",
+        "Ben： 演戏？ 他刚刚差点真的死了 ！",
+        "Tom： 我们不是故意的",
+        "Ben： 别说了",
+        "Shawn： 我们没想过要真掐死他",
+        "Sunny： 那个， 别乱了... 我们要团结...",
+        "Ben： 从现在开始， 再也别跟我提什么团结",
+        "STAGE： （背景乐： 食物和药）",
+        "Ben： 站住！ 别过来！ 啊！",
+        "Sunny： Ben， 不能吃。 那是诱惑...",
+        "Ben： 等什么呀， 等电击呢还是等拳击啊！ 吃药倒计时， 30 秒！",
+        "Tom： Ben... 真正的罪犯是他！",
+        "Shawn： 对对对， 是 Sunny... 他借刀杀人",
+        "Sunny： 我没动手",
+        "Tom： 他那是教唆罪",
+        "Ben： 20 秒！",
+        "Tom： 不是你怎么就不承认呢？",
+        "Sunny： 我承认什么啊",
+        "Shawn： 你承认是你让我们掐的",
+        "Sunny： 这不是演戏嘛",
+        "Shawn： 不想跟你演这样的戏",
+        "Sunny： 我也没让你们真掐啊",
+        "Ben： 10, 9, 8, 7, 6, 5, 4, 3, 2, 1",
+        "STAGE： （Shawn， Tom 慌乱地把药塞到 Sunny 嘴里， 背景乐， 灭灯）",
+
+        // --- 第四幕 ---
+        "ACT:第四幕",
+        "Lily： 你说句话啊。",
+        "Sam： 她应该是又被吓着了",
+        "Lily： 刚才真是太可怕了",
+        "Ben： 你放心啊， 从今以后， 只要有我在， 绝对不会在发生那种可怕的事， 啊。",
+        "Tom： Ben 先生， 我们两个人想就之前发生的事情， 做一个合理的解释。",
+        "Ben： 和我解释？",
+        "Tom： 啊",
+        "Ben： 受害者在这儿",
+        "Tom： 谢谢你的提醒， Sam 医生， 作为刚才事件的主要当事人之一， Shawn 有话跟你说",
+        "Shawn： Sam 医生... 对不起， 对不起……",
+        "Tom： Sam... 对吧……",
+        "Sam： 这这， 这还不严重？",
+        "Tom： 那个我们已经知错就改... 我们让那个真正的罪犯刚才已经得到了 应有的惩罚了...",
+        "Ben： 医生， 接不接受？",
+        "Sam： 我不可能……",
+        "Ben： 不可能不接受啊， 多大点事儿啊， 来... 握个手... 拥抱... 团结...",
+        "Tom： 好的 Ben 先生， 你真的是一个有正义感的人呐",
+        "Shawn： 讲话了 ， 各种感",
+        "Ben： 不用夸我， 我这个人就见不得两种事儿。 第一， 欺负女人， 第二， 欺负人。 我什么特点， 那就是公平， 公平， 还是他妈的公平！",
+        "STAGE： （背景乐： 食物和药）",
+        "Ben： 要我说啊， 这饭该吃就得吃， 不吃哪儿有力气出去啊， 来分了。",
+        "Tom： 来， 我来我来， Sam， 你先吃",
+        "Ben： 唉， 女士优先",
+        "Tom： 我也是这个意思， 来姐妹们， 别客气， 我也吃点儿。",
+        "Lily： Thanks for dinner.",
+        "Ben： 行， 就这么办。 哈哈哈哈... 至于这个药， 是不是。 来。",
+        "Tom： 啧， 哎呀， 拿着",
+        "Shawn： 我以为让我吃药呢。 Sunny， 起来！（捂嘴向 sunny） 呸。",
+        "Sunny： 什么意思？ ... 我吃过了... 道歉了， 被赦免了... 干净， 真干净， 干净的我他妈都脏了 。",
+        "Ben： 如果你不吃， 我倒是可以灌你吃... 好了， 知错就改... 你那个啥， 给人道个歉， 诚恳一点给人道个歉。",
+        "Sunny： 对不起， 对不起……",
+        "Ben： 听见没有， 我觉得挺诚恳的... 没事儿了是吧， 没事儿。 律师！",
+        "Tom： 啊？",
+        "Ben： 还有什么不舒服的吗？",
+        "Tom： 没有",
+        "Ben： 没有就笑， 高兴点。 笑， 笑一个！ 高兴",
+        "Tom： 嘿嘿嘿嘿嘿",
+        "Ben： 好， 对， 高兴， 笑一个... 等回头有空了， 我组个局， 找个地咱搓一顿， 喝两杯。 啊！ 都喝不喝酒？",
+        "Tom： 喝， 喝， 喝。",
+        "Ben： 哎， 喝就行了 。",
+        "Shawn： 喝……喝点威士忌...",
+        "Tom： 那个， 我平时是喝红酒的...",
+        "Ben： 哎， 算了 算了 算了... 我这个人吧， 就好整点啤的... 来点串儿... 喝完了以后吧， 我还运动运动...",
+        "Tom： 跟我一样， 我平时的爱好也是整两杆。",
+        "Ben： 是吗？",
+        "Tom： 对对",
+        "Ben： 这个特别好",
+        "Tom： 我跟你说我的成绩也一般， 一般就是七十多杆儿",
+        "Ben： 我就是， 我每天没事儿我就…………（两人同时， Tom 做高尔夫动作， Ben 做台球动作）",
+        "Shawn： 哈哈哈... Birdy 小鸟球啊。",
+        "Tom： 偶尔， Benjamin... 你也喜欢打球是吗。 Ben， 我们有球友了...",
+        "Shawn： 可以可以",
+        "Tom： 其实我觉得我们出去之后... 应该成立一个基金会",
+        "Shawn： 基金会？",
+        "Tom： 哎呀， Lily 小姐这方面是专家...",
+        "Lily： 如果大家都感兴趣的话， 那出去我就给大家做个方案",
+        "Tom： ... Icy 你是做什么工作的呀？",
+        "Icy： 我在银行工作",
+        "Tom： 金融界的... 我司法界的， 教育界的... 交通界的都有了",
+        "Ben： 好， 出去我就帮你开车",
+        "Tom： 就等你这句话呢...",
+        "Shawn： 月月有奖金， 哈哈哈哈哈",
+        "Ben： 走啊， 出去啊。 在这儿干嘛有意思吗， 走走走， 都走。 你他妈现在出的去吗？",
+        "Lily： 哎嘿， Ben， 其实大家也就是随便聊聊...",
+        "Ben： 不是， 当当我生气了... 我跟你们开玩笑逗你们玩呢。 开个玩笑！",
+        "Lily： 开玩笑， 开玩笑啊",
+        "Ben： 信了是不是... 开玩笑逗你们玩呢， 唉",
+        "Shawn： 开玩笑呢！",
+        "Tom： 唉， 吓死我了... 你太幽默了， 我以为真的呢",
+        "Sam： 开玩笑嘛， 哈哈",
+        "Ben： 你也不想想， 我哪儿来那么大脾气啊... 那是衣食父母...",
+        "Tom： 就是啊",
+        "Ben： 你再想想... 其实我这个人就特别热爱我这份工作... 我他妈那条路为什么就那么堵啊！ 一身的毛病都这么出来的...",
+        "Sam： Ben， 你冷静， 别开玩笑啊",
+        "Ben： 你们医院盲人按摩做的好不好... 今天都碰上了， 麻烦你帮我一个忙... 行不行啊！",
+        "Sam： 行行行， 来来",
+        "Ben： 又尴尬了... 老师！",
+        "Shawn： 到",
+        "Ben： 我平时也没什么爱好， 就喜欢听个评书你给来一段",
+        "Shawn： 本杰明， 本杰明讲话了 我大小也是个历史老师...",
+        "Ben： 哪段儿评书不是他妈的历史故事啊， 让你来一段是不是有什么困难吗？",
+        "Shawn： ...那我就简单给大家上一课... 加里波第...",
+        "Ben： 听过评书吗？",
+        "Shawn： 听过啊",
+        "Ben： 像不像？ 你觉得你像吗？",
+        "Shawn： 话说， 讲话了 ... 且听下回分解。",
+        "Ben： 没了？",
+        "Shawn： 明天同一时间我们不见不散",
+        "Ben： 所以说你们他妈这帮死读书的就是没用， 关键时刻我他妈就指不上你们， 滚滚滚。",
+        "Shawn： 臣告退。",
+        "Ben： 那个律师， Tom... 来来来。",
+        "Tom： 嘿， 我不喜欢历史， 也不喜欢评书， 说不了",
+        "Ben： 都说那个……说的比唱的好听， 你这么能说， 你他妈给我唱一段",
+        "Tom： ... 那么多人， 我……",
+        "Ben： 害羞啊？ ... 我来帮你加个油",
+        "Tom： 哎哎哎， 不用不用， 我唱我唱。 ... Time to say goodbye...",
+        "Ben： 什么玩意？",
+        "Tom： 美声",
+        "Ben： 呵呵... 来个通俗的好不好",
+        "Tom： 行行行... Baby baby baby oh like...",
+        "Ben： 翻译一下",
+        "Tom： 宝贝儿... 我以为你永远是我的， 我的。",
+        "Ben： 不能光唱啊， 来点儿动作。 跳起来。",
+        "Tom： 我知道你爱我... 我们就永远永远永远不分开。",
+        
+        // --- 第五幕 ---
+        "ACT:第五幕",
+        "Ben： 297， 298， 299， 300。 (休息半分钟)... 区别在哪儿， 就是练过。 律师... 这他妈算什么啊",
+        "Tom： 那个， 问题的关键可能是没吃饱",
+        "Ben： 我吃的比你多？",
+        "Tom： 那倒没有",
+        "Ben： 谁吃的不是一样多， 那么喜欢吃啊， 好啊， 明天的药你吃喽",
+        "Tom： 啊？ ……我…",
+        "Lily： Ben， 我觉得……是不是该找院长谈谈了",
+        "Ben： 我心里有数",
+        "Sam： 真的应该和院长谈谈了 ...",
+        "Ben： 我问你话了没有？... 今天晚上我就约... 有什么想吃的自己说。",
+        "Sam： 我想出去",
+        "Ben： 青菜是吧， 没问题啊... 还有没有别的",
+        "Tom： 我们想出去",
+        "Ben： 肉， 那就牛肉吧... 还有呢？",
+        "Shawn： 本杰明， 我们说……",
+        "众人： 我们想出去！",
+        "Ben： 听见了... 立正， 报数... 正步分解动作， 1。 ... 说话的能力， 来之不易， 你们珍惜了 吗？ ... 大后天的药！ 原地休息。",
+        "众人： 啊啊啊啊",
+        "Ben： 就是得练... 我有点事情要宣布一下... 我， 了 解你们...",
+        "众人： 对， 是这个意思...",
+        "Ben： 所以今天我就带头走出这第一步",
+        "众人： 好好好， 怎么做？",
+        "Ben： Lily， 嫁给我吧。（Lily 笑） 帮我加个油...",
+        "Tom： 在一起， 在一起， 在一起……",
+        "Ben： 你们， 你们不要这么难过啊... 我让院长在上面给我盖个单间... 你们有什么要求都提出来...",
+        "Sam： 我要出去",
+        "Ben： 我觉得这个房间我……",
+        "Sam： 我要出去给我的女儿过生日... 我一定要见我的女儿！",
+        "Ben： 你别忘了 ， 你的命都是我救的",
+        "Sam： 我从来没有否认过... 但你的胡闹有点过头了本杰明... (Ben 冷笑， 打翻 Sam)",
+        "Tom： 呀， 住手！！... (被 Ben 打翻)",
+        "Shawn： Tom， Tom！ 本杰明停！ ... 他就是个白痴... (Ben 摘掉 Shawn 眼镜， 踩 Shawn)",
+        "Sunny： 啊…够了 ， 够了 ， 够了",
+        "Ben： 你个杀人犯， 都在说我！",
+        "Lily： 师傅！ 我要去的是国贸， 你怎么给我带动物园来了 ， 多堵的路， 还开啊， 该收车了 吧",
+        "Ben： 对不起…别忘心里去啊（Ben 跪下， 灭灯）",
+
+        // --- 第六幕 ---
+        "ACT:第六幕",
+        "Tom： 在这里非常感谢各位一致推举我们三个人... Shawn， 来...",
+        "Shawn： 总结一下... 迎来了人人可以发言... 本杰明， 讲话了， 该你讲话了。",
+        "Ben： 通过刚才各位严肃深刻的教训， 我深刻地意识到了 我就是个历史的罪人。 ... 谢谢大家。",
+        "Tom： 还不够深刻啊。",
+        "Ben： 需要特别提出的一点就是... 我希望能够得到 Lily 小姐的原谅， 对不起。",
+        "Lily： 我接受你的道歉",
+        "Sam： 啊那就好... 欢迎 Ben 先生重新回到我们这个集体的怀抱...",
+        "Sam： ... 我们也有请 Sunny 先生给我们说两句...",
+        "Sunny： 我深刻意识到了 自己所犯下的滔天罪行... 早日从这儿出去",
+        "Sam： 那么接下来我就建议我们讨论一下药的分配问题",
+        "Sam： ... 这个药我们三个呢……",
+        "Shawn： 替大家吃！ 鼓掌。",
+        "Tom： 掌声... 那接下来我们就要进行关于这个饭的分配问题了... 按 照刚才分药的原则来进行分配",
+        "Tom： ... 那我决定那这个饭我们三个就……",
+        "Shawn： 不吃了， 分给大家！",
+        "Lily： 真的！ 太好了 太好了 ！",
+        "Shawn： 讲话了。 除了饭和药我还准备分一样... 献计献策...",
+        "Sam： 那我就紧接着 Shawn 来继续献一下我的计... 摆在我们和院方之间的一个主要矛盾啊。",
+        "Tom： 那接下来， 我就... 来一个将计就计... 各位， 如果说我们想从这里出去的话， 首先要做的第一件事情， 那就是我们要假设我们自己就是精神病患者",
+        "Shawn： Tom！",
+        "Sam： Tom, 你说的这是什么啊...",
+        "Ben： Tom, 你这他妈的出的什么破主意， 有脑子啊， 脑子去哪了。",
+        "Sunny： Tom, 你这可不是一个具有逻辑性的律师会想到的办法。",
+        "Lily： Tom, 这什么啊...",
+        "Tom： 我只是假设... 只要我们再一次面对这个环境面对院方的时候， 我们表现出来的态度是赞美的， 是顺服的， 是安详的， 那院方就一定认为我们已经康复啦。",
+        "Sam： 对对对对对， Tom 说的完全正确",
+        "Tom： 没错... 所以说我们要用法庭上的一种举证方式， 还原现场， 情景再现！",
+        "众人： 情景再现？ 这是。。。。",
+        "Tom： 就这样………（耳语）（灯灭， 再亮）",
+        "Lily： 啊~",
+        "Sam： 哇~",
+        "Tom： 咦~",
+        "Ben： 呜~",
+        "Tom： 新朋友~",
+        "众人： 幸会幸会， 你好你好",
+        "Sam： 哎呦呦呦呦呦小心点儿... 不知道这里是什么地方哦",
+        "众人： 哎呀我们也不知道",
+        "Ben： 那他妈就呆着吧",
+        "众人： 哈哈哈， 好的……",
+        "Lily： 哎呀， 那有一个死人",
+        "Shawn： 没有， 睡了一觉打个盹...",
+        "Sam： 我们还想问你呢",
+        "Shawn： 真的不知道",
+        "Sunny： 天哪， 那咱们看看这个美丽的地方它藏着什么惊喜啊",
+        "众人： 好呀... 惊喜",
+        "Sam： 大家看这里的铁丝网好酷炫啊",
+        "Ben： 这个地板好干净啊",
+        "Sunny： 这里墙的颜色好后现代啊",
+        "Shawn： 这个灯光好明亮啊",
+        "Lily： 这个大门好恐怖啊",
+        "Sunny： 报警吧",
+        "Lily： 报警吧， 赶紧",
+        "Sunny： 我的手机... 你有权保持沉默...",
+        "Tom： 哎呀， 我的衣服呢...",
+        "Ben： 他妈的我的手机呢， 我的衣服呢， 这他妈的什么衣服， 他妈的把我关到哪里来了。 妈的， 老子要出去。",
+        "Lily： 啊， 我的手机呢...",
+        "Shawn： 手机！ 哎...",
+        "Icy： 啊， 手机手机...",
+        "Sam： 对！ 手机， 快报警...",
+        "Tom： ... 非法侵占他人财物... 对不起对不起。。",
+        "众人： （打自己耳光）",
+        "Tom： 各位， 这难道就是传说中的抢劫吗",
+        "众人： 哇哦~~",
+        "Lily： ... 电锯惊魂！",
+        "众人： 哇哦~~",
+        "Sam： ... 你们身上有没有这个手术刀留下的伤口啊",
+        "众人： 没有~~",
+        "Sam： 那就不是非法器官贩卖， 太可惜了",
+        "众人： 哎呀， 太可惜了~~",
+        "Lily： 唉， 这儿有一个红点",
+        "Sunny： 监控器...",
+        "Tom： 绑~架~",
+        "众人： 喔！",
+        "Ben： 那他妈谁会绑架一个司机呢",
+        "众人： 哈哈哈哈哈……",
+        "Shawn： 这里是——",
+        "众人： 精神病院！",
+        "Shawn： 我们是——",
+        "众人： 精神病人！",
+        "Tom： 对啊， 要不然我怎么会穿上这个衣服啊...",
+        "Ben： 不是我之前那个……",
+        "Shawn： 院长我知道了 ...",
+        "Lily： 院长我有病你给我点药吃...",
+        "Tom（大喊）： 院长出来呀！",
+        "Sunny： ... 我要吃药！",
+        "Tom： 院长， 我有病， 我要吃药， 给我药吃！",
+        "Ben： 给我吃药， 你给我出来！！",
+        "Lily： 药药药， 我是精神病， 我要吃药",
+        "Shawn： 我有病， 我有病， 快给我吃药！",
+        "Sam： 院长， 快出来， 我有病， 我要吃药！",
+        "Icy ： 啊， 我是精神病， 我要吃药， 给我药",
+        "院长： 203 病房在吵什么",
+        "众人： 院长我有病你救救我...",
+        "院长： 你们是说你们有精神病？ ... 错了， 在你们当中只有一个人有病， 找到这个人， 你们就可以走了 。",
+        
+        // --- 第七幕 ---
+        "ACT:第七幕",
+        "Tom： 好了各位， 现在事情终于有了一个结果了 ...",
+        "Shawn： 唉， 那讲话了...",
+        "Sam： 而且我觉得啊， 刚才所有人的演技都非常的棒...",
+        "Tom： 但是， 只有一个人是真情流露的， 从实际意义上讲， 他才是那个疯子",
+        "Sam： 所以我们现在要做的就是找出这个疯子...",
+        "Shawn： 我现在宣布这个疯子就在你们四个当中",
+        "Lily： 什么意思？ 我们四个",
+        "Shawn： 什么什么意思， 讲话了 ， 7 减 3 是不是等于 4",
+        "Lily： 但是院长刚才明明说是 7 个人为什么要减 3 呢",
+        "Sam： Lily 小姐... 你们认为会在我们三个人中间吗？",
+        "Lily： ... 又有哪个正常人会抢着吃药， 还是给疯子吃的药呢",
+        "Tom： 这正好说明我们管理机构的大公无私...",
+        "Shawn： Lily 呀...",
+        "Sam： 你这样说话毫无人性可言",
+        "Lily： 我不是你的病人... 我有权无视你们的评判！",
+        "Tom： ... 也许保持沉默才是你不被我们认为是精神病患者的唯一途径， 啊~",
+        "Sunny： 这话怎么在哪儿听过啊... 精神病在我们四个当中的呢",
+        "Sam： 好好好， Sunny 先生， 作为一名医生我来和你谈",
+        "Sunny： 你能代表谁",
+        "Sam： 我能代表院方... 那我就代表我们所有人",
+        "Sunny： 谁他妈让你代表的！",
+        "Sam： 是你们把我们三个选出来的",
+        "Sunny： 你还记得你是我们选出的代表啊， 你曾经代表过我们的任何利益吗？",
+        "Shawn： Sunny， 讲话了 Sam 是这里受祸害最严重的...",
+        "Ben： 刚刚是谁亲手在那要掐死他的， 现在正义凌然是不， 我怎么记得曾经有人卑躬屈膝地求我们原谅他",
+        "Shawn： 本杰明， 这事儿不是不提了 么！",
+        "Ben： 谁先提的啊！",
+        "Shawn： 你的那些历史问题不也暂时搁置了么。。。",
+        "Ben： 你提一个试试！",
+        "Tom： 好了 好了 ， 现在我们最应该做的事情是坦白从宽， 抗拒从严！",
+        "Lily： 我们就不宽大处理你们！",
+        "Tom： 你误会了 ， 我们的意思是要从严处理你们的抗拒！",
+        "Ben： 我就在这站着， 就凭你们三个， 啊， 我他妈看看， 谁敢处理我！",
+        "Shawn： 我们公正的法律， 神圣的道德， 人权的尊严！",
+        "Tom： 对呀",
+        "Lily： 呸呸呸呸呸呸呸呸",
+        "Shawn： 哎呀， 看看一个女人竟敢呸我们三个为他们吃药代表的脸！",
+        "Tom： ... Lily 小姐， 你就是那个疯子！",
+        "Shawn： 院长！",
+        "Tom： 院长， 病人找到了 唉",
+        "Sunny： 院长你赶紧到这个病房里看一看吧， 你一进来就知道谁是精神病了。",
+        "Tom： Shawn， 问你个问题。 ... 你说院长会介意我们多选一个疯子出来么？",
+        "Shawn： 哎呀... 只要目标是对的， 那就是高尚。",
+        "Tom： 真的呀",
+        "Shawn： ... 讲话了， 碾过去。",
+        "Sunny： 我从来就不知道什么叫秩序",
+        "Tom： 我警告你们， 不要再包庇她了...",
+        "Sunny： ... Tom 律师， 你根本不配做我们的代表。",
+        "Tom： 我反对",
+        "Sunny： 反对无效...",
+        "Tom： 我们所做的一切都是为了 大家...",
+        "Sunny： 你代表不了 这里的任何人...",
+        "Sam： 呵呵， 一个曾经试图杀死我... Sunny 你说你是不是疯了",
+        "Ben： 一个曾经被我救了命的人， 居然说他的救命恩人是个疯子... 不是疯子是什么！",
+        "Tom： ... 你现在的所作所为足以证明， 你就是一个疯子！",
+        "Lily： ... 你们才是疯子！",
+        "Shawn： ... 你们是不是疯了？",
+        "Sunny： ... 你们怕了才会想去迫害我们， 迫害我们。",
+        "Sam： 我们？ 迫害你们？ 栽赃吧各位",
+        "Ben： 少跟我扯这些没用的， 我现在就知道一件事， 那就是疯子就在你们当中， 就在你们……",
+        "众人： 你们， 你们...",
+        "Icy： 啊————！ 我是疯子！... 你们走吧， 我是疯子",
+        "众人： 门开了！ 门开了！",
+        "Lily、 Ben： 啊啊啊（最响）",
+        "院长： 你好 Icy",
+        "Icy： 你应该说， 你好， 疯子。",
+
+        // --- 第八幕 ---
+        "ACT:第八幕",
+        "Icy： Tom， Tom， Tom",
+        "Tom： 你谁啊？",
+        "Icy： 是我， 我是 Icy。",
+        "Tom： Icy 是谁， 别碰我...",
+        "Icy： Sam， Sam, 我是 Icy， 我 Icy。",
+        "Lily： 啊——",
+        "Icy： 大家都别慌... 他没死， Shawn， Shawn， 你醒醒啊",
+        "Shawn： 走开！ 我眼镜呢？... 谁啊你是？",
+        "Icy： 我是 Icy 啊， Shawn",
+        "Shawn： 你怎么知道我叫 Shawn？",
+        "Icy： Sunny， Ben， Sam， Tom， Lily， 是我啊， 我是 Icy",
+        "众人： 你是谁？ 谁把我们带这儿来的？...",
+        "院长： 好了好了 好了， Icy， 你控制不了他们... 我受够了 你们的健忘...",
+        "院长： ... 你们难道真的不认识这个地方。... Sam 医生...",
+        "Sam： 你怎么知道的",
+        "院长： ... 有那个人会永远都只过 6 岁的生日！... Shawn 老师...",
+        "院长： ... Tom 律师... 你打的都是些什么官司...",
+        "Tom： 这都不重要...",
+        "院长： ... Lily 小姐... 你真的拥有过它们吗？... 本杰明！",
+        "Ben： 到！",
+        "院长： 作为一个退伍军人， 你能告诉我你的军装尺码吗？ ... 那我请问你有哪条路会每天都在同一时刻发生车祸。... Sunny！... 皇家合众国根本就没有你坚守的先驱报。",
+        "院长： 你是谁， 你们有没有问过自己这个问题... 我希望你们捡起头脑中的记忆碎片... 你是谁？",
+        "众人： Icy……",
+        "Shawn： Icy， Icy， 我是 Icy， 讲话了 ... 我想回家。",
+        "Ben： 呵呵呵呵， 你说我是 Icy 是吧， 那就是说我是假的呗， 那就是说我没有被教官打骂... 那些都是假的是吧， 嘿嘿嘿嘿... 我没有受过这些苦， 我舒服多了。... 你看就， 就就， 后面这根筋好几年了... 我脑子里的， 这么清楚地记得的那种疼都他妈是假的吗？",
+        "Lily： Icy， Icy， 你别闹了 ...",
+        "Tom： 如果我是 Icy， 那为什么我会清楚的记得...",
+        "Sam： 我是 Icy， 我不是 Sam... 那我活着还有什么意义。",
+        "Sunny： 我一直以为上帝在造我的同时赐予了 我天赋... 我甚至连块墓碑都没有……",
+        "Icy： 我不是 Icy... 我他妈是你想象的， 他们， 他们过的什么生活， 我他妈过的什么生活， 你说啊！！",
+        "众人： 为什么",
+        "Icy： 啊——为什么， 为什么你们都要掐死我... 你们住在我心里已经很长时间了。 ... Sam...",
+        "Sam： 那是我第一次外出就诊... 我记得我记得她眼睛和 Lucy 那么像。",
+        "Icy： ... Shawn 老师...",
+        "Shawn： Icy， 长大了要懂事儿...",
+        "Icy： Lily...",
+        "Lily、 Icy： Icy， 你真漂亮",
+        "Icy： Tom...",
+        "Tom： Icy， 你说为什么他们都认为是我的错... 讨厌， 你又学我",
+        "Icy： Sunny...",
+        "Sunny： 就不能记点好的",
+        "Icy： 因为我的心里第一次有了崇拜的人。 Ben~~~， 是你， 你总是开着那辆破旧的吉普车带着我在绕城高速上一圈又一圈地兜风... 也是他教会了我要大口大口地喝啤酒...",
+        "Ben、 Icy： 去他妈的！！！！（同时）",
+        "Icy： 我不知道为什么， 你们都变了。... 你们对于我是唯一的是真实的... 我们永远都不要分开~~！！",
+        "Sam： ... 如果我们永远都不分开就意味着我们要永远呆在这儿...",
+        "Tom： 这还不简单吗， 我们几个人先出去， 回头再救她啊。",
+        "Sam： 我们已经出去过好多次了",
+        "Tom： 哦， 又回来了哈",
+        "Shawn： 那就让 Icy 先出去， 我们六个留下",
+        "Ben： 我们不用留下， 她出去了就等于我们都出去了",
+        "Sam： 不不不， Icy 出去了 就证明她痊愈了 ， 她痊愈了 我们就不存在了",
+        "Lily： 不是， 但是我们跟 Icy 不能分开的， 我们都留下好不好",
+        "Sam： 那 Icy 就要一辈子呆在这个病房里",
+        "Tom： 你听我的， 我们再试一次， 我们几个先出去",
+        "Shawn： 我说让 Icy 先出去",
+        "Ben： 让她走吧， 她走了 我们就能",
+        "Lily： 但我们跟 icy 是不能分开的哈， 我们一起留下来！",
+        "Shawn： 那就让 Icy 先出去， 我们六个留下",
+        "Ben： 我们不用留下， 她出去了就等于我们都出去了",
+        "Sam： 不不不， Icy 出去了 就证明她痊愈了 ， 她痊愈了 我们就不存在了",
+        "Lily： 不是， 但是我们跟 Icy 不能分开的， 我们都留下好不好",
+        "Sam： 那 Icy 就要一辈子呆在这个病房里",
+        "Tom： 你听我的， 我们再试一次， 我们几个先出去",
+        "Sunny： 好啦， Icy 应该痊愈， 我们本来就不存在， 所以我想， 我们应该……",
+        "Tom： 不是， 你没明白我什么意思， 我是说， 我们几个人先出去",
+        "Ben： 我觉得吧 ， 让她先走吧， 她也不会把我们抛在这儿不管的",
+        "Shawn： 本杰明我说的没错吧， 她。。",
+        "Ben： 她她也不是这样的人。。 我觉得把，",
+        "Lily： 我说了 ， 我们一起留下来。。。",
+        "Ben： （大声） 她也不会把我们抛在这儿不管， 她不是这样的， 让她出去让她出去...",
+        "Shawn： 我觉得吧， 这么多人我们一起想办法",
+        "Lily： 我们要一起留下来， 不能剩她一个",
+        "Tom： 不是， 我们得想想办法... 我的意思是， 我们几个人先出去， 然后",
+        "Sam： 我们出不去的... 哎我也想出去， 我想出去。",
+        "Sunny： Icy， 从这儿出去以后， 想去哪儿啊",
+        "Icy： 你们想去哪儿",
+        "Ben： 海边， 蔚蓝色的大海边， 在离岸边不远的地方， 是一栋我们自己的小木屋子",
+        "Lily： 在小木屋的后面， 是一片茂密的椰子树林",
+        "Shawn： 岸边停着我们自己的船， 天气晴好的时候可以出海打渔、 游泳",
+        "Sam： 等我们回来了， 在两棵椰子树的中间绑上一根吊床， 吹着海风喝凉啤酒",
+        "Sunny： 我们还要在海滩上架一堆篝火",
+        "Tom： 弹着吉他， 唱着歌",
+        "Icy： 那我可以跳舞吗",
+        "众人： 当然",
+        "Icy： 哈哈哈... 你们就是我， 我就是你们啊... 亚伯拉罕是上帝忠实的信徒... 我们应该把自己完全交付给上帝， 上帝他会为我们准备一切。",
+        
+        // --- 第九幕 ---
+        "ACT:第九幕",
+        "Icy： Sam， Ben， Lily... 你们都去哪儿...",
+        "院长： Icy， 你还好吗？",
+        "Icy： 他们呢， 我的朋友们他们都去哪儿了 ？",
+        "院长： 你还记得亚伯拉罕的故事吗？",
+        "Icy： 记得， 难道不对吗？",
+        "院长： 没有错误， 完美的故事。",
+        "Icy： 好， 我愿意做以撒... 我的朋友们他们去哪儿了",
+        "院长： ... 是这只山羊， 成就了亚伯拉罕的忠诚...",
+        "Icy： 我懂了",
+        "院长： Icy， 恭喜你， 经过十个月的治疗， 你终于可以康复出院了",
+        "众人： 谢谢院长",
+        "STAGE： 剧终"
+    ];
+
+    // 数据解析器
+    const scripts = {};
+    let currentAct = 0;
+    
+    // 预处理 rawData
+    rawData.forEach(line => {
+        if (line.startsWith("ACT:")) {
+            currentAct++;
+            scripts[currentAct - 1] = []; // 数组索引从0开始，对应第一幕
+        } else {
+            if (!scripts[currentAct - 1]) return;
+            
+            // 尝试分离角色和内容
+            let colonIndex = line.indexOf("：");
+            if (colonIndex === -1) colonIndex = line.indexOf(": ");
+            
+            if (colonIndex !== -1) {
+                let role = line.substring(0, colonIndex).trim();
+                let content = line.substring(colonIndex + 1).trim();
+                
+                // 简单的角色归一化
+                if (role.includes("众人") || role.includes("大家")) role = "众人";
+                if (role.toUpperCase() === "STAGE") role = "STAGE";
+                
+                scripts[currentAct - 1].push({ role: role, content: content });
+            } else {
+                // 如果没有冒号，可能是上一句的延续，或者特殊的舞台指示
+                // 这里简单处理：追加到上一句，或者如果是第一句则作为STAGE
+                let actLines = scripts[currentAct - 1];
+                if (actLines.length > 0) {
+                    actLines[actLines.length - 1].content += "\n" + line;
+                } else {
+                    actLines.push({ role: "STAGE", content: line });
+                }
+            }
+        }
+    });
+
+    const actNames = [
+        "第一幕：苏醒与混乱",
+        "第二幕：电击后的愤怒",
+        "第三幕：寻找叛徒与印度舞",
+        "第四幕：Ben的独裁时刻",
+        "第五幕：Ben的求婚与崩溃",
+        "第六幕：维权代表与假装疯子",
+        "第七幕：疯子是谁？",
+        "第八幕：Icy 的觉醒与告别",
+        "第九幕：痊愈与结局"
+    ];
+
+    // 初始化下拉菜单
+    const select = document.getElementById('sceneSelect');
+    actNames.forEach((name, index) => {
+        let option = document.createElement('option');
+        option.value = index;
+        option.text = name;
+        select.appendChild(option);
+    });
+
+    let currentSceneData = [];
+    let currentIndex = 0;
+    let benLineRevealed = false;
+    
+    // 初始化
+    window.onload = function() {
+        changeScene();
+        
+        document.addEventListener('keydown', function(event) {
+            if (event.code === 'Space' || event.code === 'ArrowRight' || event.code === 'Enter') {
+                event.preventDefault();
+                advance();
+            } else if (event.code === 'KeyR') {
+                resetScene();
+            }
+        });
+    };
+
+    function changeScene() {
+        const sceneId = document.getElementById('sceneSelect').value;
+        currentSceneData = scripts[sceneId] || [];
+        resetScene();
+    }
+
+    function resetScene() {
+        currentIndex = 0;
+        benLineRevealed = false;
+        const stage = document.getElementById('stage');
+        stage.innerHTML = '<div class="line instruction"><div class="text">场景已加载。按下 [空格] 或点击按钮开始。<br>提示：红色块是你的台词，先背，再点。</div></div>';
+        updateProgressBar();
+    }
+
+    function updateProgressBar() {
+        const total = currentSceneData.length;
+        const percentage = total === 0 ? 0 : (currentIndex / total) * 100;
+        document.getElementById('progress-fill').style.width = percentage + '%';
+    }
+
+    function advance() {
+        if (currentIndex >= currentSceneData.length) {
+            alert("本幕结束！");
+            return;
+        }
+
+        const lineData = currentSceneData[currentIndex];
+        // 判定是否是Ben（包括变体如 BEN, Ben等）
+        const roleUpper = lineData.role.toUpperCase();
+        const isBen = roleUpper.includes("BEN") || roleUpper.includes("本杰明");
+        const stage = document.getElementById('stage');
+
+        if (isBen) {
+            if (!benLineRevealed) {
+                // 检查是否已生成占位符
+                const existingLines = stage.getElementsByClassName('line');
+                const lastLine = existingLines[existingLines.length - 1];
+                
+                if (lastLine && lastLine.classList.contains('ben') && lastLine.dataset.index == currentIndex) {
+                     // 揭晓
+                     const contentDiv = lastLine.querySelector('.text');
+                     contentDiv.textContent = lineData.content;
+                     contentDiv.classList.remove('masked');
+                     contentDiv.classList.add('revealed');
+                     benLineRevealed = true;
+                     currentIndex++;
+                     updateProgressBar();
+                     scrollToBottom();
+                     return;
+                } else {
+                    // 生成占位符
+                    createLineHTML(lineData, true);
+                    scrollToBottom();
+                    return;
+                }
+            }
+        } else {
+            createLineHTML(lineData, false);
+            currentIndex++;
+            benLineRevealed = false;
+        }
+
+        updateProgressBar();
+        scrollToBottom();
+    }
+
+    function createLineHTML(data, isMasked) {
+        const stage = document.getElementById('stage');
+        const div = document.createElement('div');
+        const roleUpper = data.role.toUpperCase();
+        const isBen = roleUpper.includes("BEN") || roleUpper.includes("本杰明");
+        const isStage = roleUpper.includes("STAGE") || roleUpper.includes("广播") || roleUpper.includes("背景乐");
+        
+        let className = 'other';
+        if (isBen) className = 'ben';
+        if (isStage) className = 'stage';
+
+        div.className = `line ${className}`;
+        if(isBen) div.dataset.index = currentIndex;
+
+        const roleDiv = document.createElement('div');
+        roleDiv.className = 'role';
+        roleDiv.textContent = data.role === 'STAGE' ? '>>> 舞台指示 <<<' : data.role;
+
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'text';
+        
+        if (isMasked) {
+            contentDiv.textContent = "[ 点击揭晓 Ben 的台词 ]";
+            contentDiv.classList.add('masked');
+            contentDiv.onclick = function() {
+                if(contentDiv.classList.contains('masked')) {
+                    contentDiv.textContent = data.content;
+                    contentDiv.classList.remove('masked');
+                    contentDiv.classList.add('revealed');
+                    benLineRevealed = true;
+                    currentIndex++;
+                    updateProgressBar();
+                }
+            };
+        } else {
+            contentDiv.textContent = data.content;
+        }
+
+        if (!isStage || data.content.trim() !== "") {
+            div.appendChild(roleDiv);
+            div.appendChild(contentDiv);
+            stage.appendChild(div);
+        }
+    }
+    
+    function scrollToBottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+        document.getElementById('stage').scrollTop = document.getElementById('stage').scrollHeight;
+    }
+
+</script>
+</body>
+</html>
